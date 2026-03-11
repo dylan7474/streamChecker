@@ -100,6 +100,43 @@ static gboolean is_english_station(struct json_object *station) {
     return is_english;
 }
 
+static gboolean station_passes_live_test(struct json_object *station) {
+    struct json_object *j_lastcheckok;
+
+    if (!json_object_object_get_ex(station, "lastcheckok", &j_lastcheckok)) {
+        return FALSE;
+    }
+
+    return json_object_get_int(j_lastcheckok) == 1;
+}
+
+static gboolean category_matches_search(struct json_object *station, const char *search_term) {
+    struct json_object *j_tags;
+
+    if (!json_object_object_get_ex(station, "tags", &j_tags)) {
+        return FALSE;
+    }
+
+    const char *tags = json_object_get_string(j_tags);
+    if (!tags || !search_term || !*search_term) {
+        return FALSE;
+    }
+
+    char **tag_list = g_strsplit(tags, ",", -1);
+    gboolean match = FALSE;
+
+    for (int i = 0; tag_list[i] != NULL; i++) {
+        char *trimmed = g_strstrip(tag_list[i]);
+        if (g_ascii_strcasecmp(trimmed, search_term) == 0) {
+            match = TRUE;
+            break;
+        }
+    }
+
+    g_strfreev(tag_list);
+    return match;
+}
+
 // -----------------------------------------------------------------------------
 // Recording Thread
 // -----------------------------------------------------------------------------
@@ -175,6 +212,8 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
     chunk.memory = malloc(1);
     chunk.size = 0;
 
+    char *normalized_search = g_ascii_strdown(search_term, -1);
+
     // URL Encode the search term
     char *encoded_term = curl_easy_escape(curl, search_term, 0);
     
@@ -182,10 +221,10 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
     char url[1024];
     if (search_type == 0) {
         // By Name
-        snprintf(url, sizeof(url), "https://all.api.radio-browser.info/json/stations/byname/%s?limit=50", encoded_term);
+        snprintf(url, sizeof(url), "https://all.api.radio-browser.info/json/stations/byname/%s?limit=50&hidebroken=true", encoded_term);
     } else {
         // By Category / Tag
-        snprintf(url, sizeof(url), "https://all.api.radio-browser.info/json/stations/bytag/%s?limit=50", encoded_term);
+        snprintf(url, sizeof(url), "https://all.api.radio-browser.info/json/stations/bytagexact/%s?limit=50&hidebroken=true", encoded_term);
     }
     
     curl_free(encoded_term);
@@ -203,6 +242,7 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
     if (res != CURLE_OK) {
         fprintf(stderr, "curl search error: %s\n", curl_easy_strerror(res));
         gtk_label_set_text(GTK_LABEL(app->status_label), "Search failed! Network error.");
+        g_free(normalized_search);
         free(chunk.memory);
         return;
     }
@@ -221,7 +261,11 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
             
             if (json_object_object_get_ex(station, "name", &j_name) &&
                 json_object_object_get_ex(station, "url_resolved", &j_url)) {
-                if (!is_english_station(station)) {
+                if (!is_english_station(station) || !station_passes_live_test(station)) {
+                    continue;
+                }
+
+                if (search_type == 1 && !category_matches_search(station, normalized_search)) {
                     continue;
                 }
                 
@@ -236,7 +280,7 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
         }
         
         char status_msg[128];
-        snprintf(status_msg, sizeof(status_msg), "Found %d English stations (from %d total).", shown_stations, n_stations);
+        snprintf(status_msg, sizeof(status_msg), "Found %d live English stations (from %d total).", shown_stations, n_stations);
         gtk_label_set_text(GTK_LABEL(app->status_label), status_msg);
         
     } else {
@@ -244,6 +288,7 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
     }
 
     if (parsed_json) json_object_put(parsed_json);
+    g_free(normalized_search);
     free(chunk.memory);
 }
 
