@@ -177,66 +177,23 @@ static gboolean category_matches_search(struct json_object *station, const char 
 }
 
 static void load_category_dropdown(AppState *app) {
-    CURL *curl = curl_easy_init();
-    if (!curl) {
-        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app->category_combo), "Unable to load categories");
-        gtk_combo_box_set_active(GTK_COMBO_BOX(app->category_combo), 0);
-        return;
-    }
-
-    struct MemoryStruct chunk;
-    chunk.memory = malloc(1);
-    chunk.size = 0;
-
-    curl_easy_setopt(curl, CURLOPT_URL, "https://all.api.radio-browser.info/json/tags");
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "LinuxCRadioApp/1.0");
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-
-    CURLcode res = curl_easy_perform(curl);
-    curl_easy_cleanup(curl);
-
     gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(app->category_combo));
 
-    if (res != CURLE_OK) {
-        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app->category_combo), "Unable to load categories");
-        gtk_combo_box_set_active(GTK_COMBO_BOX(app->category_combo), 0);
-        free(chunk.memory);
-        return;
-    }
+    static const char *categories[] = {
+        "music",
+        "news",
+        "talk",
+        "science",
+        "technology",
+        "classical"
+    };
 
-    struct json_object *parsed_json = json_tokener_parse(chunk.memory);
-    if (!parsed_json || json_object_get_type(parsed_json) != json_type_array) {
-        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app->category_combo), "Unable to load categories");
-        gtk_combo_box_set_active(GTK_COMBO_BOX(app->category_combo), 0);
-        if (parsed_json) {
-            json_object_put(parsed_json);
-        }
-        free(chunk.memory);
-        return;
-    }
-
-    int n_categories = json_object_array_length(parsed_json);
+    const int n_categories = (int)(sizeof(categories) / sizeof(categories[0]));
     for (int i = 0; i < n_categories; i++) {
-        struct json_object *tag_obj = json_object_array_get_idx(parsed_json, i);
-        struct json_object *j_name;
-        if (!json_object_object_get_ex(tag_obj, "name", &j_name)) {
-            continue;
-        }
-
-        const char *category_name = json_object_get_string(j_name);
-        if (!category_name || category_name[0] == '\0') {
-            continue;
-        }
-
-        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app->category_combo), category_name);
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app->category_combo), categories[i]);
     }
 
     gtk_combo_box_set_active(GTK_COMBO_BOX(app->category_combo), 0);
-    json_object_put(parsed_json);
-    free(chunk.memory);
 }
 
 // -----------------------------------------------------------------------------
