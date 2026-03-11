@@ -111,6 +111,12 @@ static gboolean station_passes_live_test(struct json_object *station) {
 }
 
 static gboolean category_matches_search(struct json_object *station, const char *search_term) {
+    static const char *music_tags[] = {
+        "music", "pop", "rock", "jazz", "classical", "hip hop", "hip-hop",
+        "rap", "dance", "electronic", "edm", "country", "metal", "hits"
+    };
+    const int music_tags_count = (int)(sizeof(music_tags) / sizeof(music_tags[0]));
+
     struct json_object *j_tags;
 
     if (!json_object_object_get_ex(station, "tags", &j_tags)) {
@@ -130,7 +136,16 @@ static gboolean category_matches_search(struct json_object *station, const char 
     }
 
     char **tag_list = g_strsplit(normalized_tags, ",", -1);
-    gboolean match = FALSE;
+    gboolean exact_match = FALSE;
+    gboolean has_music_tag = FALSE;
+    gboolean search_is_music = FALSE;
+
+    for (int i = 0; i < music_tags_count; i++) {
+        if (g_ascii_strcasecmp(search_term, music_tags[i]) == 0) {
+            search_is_music = TRUE;
+            break;
+        }
+    }
 
     for (int i = 0; tag_list[i] != NULL; i++) {
         char *trimmed = g_strstrip(tag_list[i]);
@@ -138,10 +153,21 @@ static gboolean category_matches_search(struct json_object *station, const char 
             continue;
         }
 
-        if (g_ascii_strcasecmp(trimmed, search_term) == 0) {
-            match = TRUE;
-            break;
+        for (int j = 0; j < music_tags_count; j++) {
+            if (g_ascii_strcasecmp(trimmed, music_tags[j]) == 0) {
+                has_music_tag = TRUE;
+                break;
+            }
         }
+
+        if (g_ascii_strcasecmp(trimmed, search_term) == 0) {
+            exact_match = TRUE;
+        }
+    }
+
+    gboolean match = exact_match;
+    if (match && !search_is_music && has_music_tag) {
+        match = FALSE;
     }
 
     g_strfreev(tag_list);
