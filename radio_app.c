@@ -81,6 +81,25 @@ void sanitize_filename(char *filename) {
     }
 }
 
+static gboolean is_english_station(struct json_object *station) {
+    struct json_object *j_language;
+
+    if (!json_object_object_get_ex(station, "language", &j_language)) {
+        return FALSE;
+    }
+
+    const char *language = json_object_get_string(j_language);
+    if (!language) {
+        return FALSE;
+    }
+
+    char *lower_language = g_ascii_strdown(language, -1);
+    gboolean is_english = (strstr(lower_language, "english") != NULL);
+    g_free(lower_language);
+
+    return is_english;
+}
+
 // -----------------------------------------------------------------------------
 // Recording Thread
 // -----------------------------------------------------------------------------
@@ -194,6 +213,7 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
     struct json_object *parsed_json = json_tokener_parse(chunk.memory);
     if (parsed_json && json_object_get_type(parsed_json) == json_type_array) {
         int n_stations = json_object_array_length(parsed_json);
+        int shown_stations = 0;
         
         for (int i = 0; i < n_stations; i++) {
             struct json_object *station = json_object_array_get_idx(parsed_json, i);
@@ -201,6 +221,9 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
             
             if (json_object_object_get_ex(station, "name", &j_name) &&
                 json_object_object_get_ex(station, "url_resolved", &j_url)) {
+                if (!is_english_station(station)) {
+                    continue;
+                }
                 
                 const char *s_name = json_object_get_string(j_name);
                 const char *s_url = json_object_get_string(j_url);
@@ -208,11 +231,12 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
                 GtkTreeIter iter;
                 gtk_list_store_append(app->list_store, &iter);
                 gtk_list_store_set(app->list_store, &iter, 0, s_name, 1, s_url, -1);
+                shown_stations++;
             }
         }
         
         char status_msg[128];
-        snprintf(status_msg, sizeof(status_msg), "Found %d stations.", n_stations);
+        snprintf(status_msg, sizeof(status_msg), "Found %d English stations (from %d total).", shown_stations, n_stations);
         gtk_label_set_text(GTK_LABEL(app->status_label), status_msg);
         
     } else {
