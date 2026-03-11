@@ -124,17 +124,35 @@ static gboolean category_matches_search(struct json_object *station, const char 
 
     char **tag_list = g_strsplit(tags, ",", -1);
     gboolean match = FALSE;
+    gboolean primary_match = FALSE;
 
     for (int i = 0; tag_list[i] != NULL; i++) {
         char *trimmed = g_strstrip(tag_list[i]);
+        if (trimmed[0] == '\0') {
+            continue;
+        }
+
+        if (!primary_match) {
+            primary_match = (g_ascii_strcasecmp(trimmed, search_term) == 0);
+        }
+
         if (g_ascii_strcasecmp(trimmed, search_term) == 0) {
             match = TRUE;
-            break;
         }
     }
 
     g_strfreev(tag_list);
-    return match;
+
+    if (!match) {
+        return FALSE;
+    }
+
+    /*
+     * Radio Browser tags are community-maintained and many stations include a
+     * long generic tag list. Requiring a primary-tag match keeps category
+     * search results focused on the requested category (e.g. "news").
+     */
+    return primary_match;
 }
 
 // -----------------------------------------------------------------------------
@@ -201,7 +219,12 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
     const char *search_term = gtk_entry_get_text(GTK_ENTRY(app->search_entry));
     int search_type = gtk_combo_box_get_active(GTK_COMBO_BOX(app->search_type_combo));
     
-    if (strlen(search_term) == 0) return;
+    char *search_term_copy = g_strdup(search_term);
+    char *trimmed_search = g_strstrip(search_term_copy);
+    if (strlen(trimmed_search) == 0) {
+        g_free(search_term_copy);
+        return;
+    }
 
     gtk_label_set_text(GTK_LABEL(app->status_label), "Searching directory...");
     
@@ -212,10 +235,10 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
     chunk.memory = malloc(1);
     chunk.size = 0;
 
-    char *normalized_search = g_ascii_strdown(search_term, -1);
+    char *normalized_search = g_ascii_strdown(trimmed_search, -1);
 
     // URL Encode the search term
-    char *encoded_term = curl_easy_escape(curl, search_term, 0);
+    char *encoded_term = curl_easy_escape(curl, trimmed_search, 0);
     
     // Determine API Endpoint (Radio Browser API)
     char url[1024];
@@ -243,6 +266,7 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
         fprintf(stderr, "curl search error: %s\n", curl_easy_strerror(res));
         gtk_label_set_text(GTK_LABEL(app->status_label), "Search failed! Network error.");
         g_free(normalized_search);
+        g_free(search_term_copy);
         free(chunk.memory);
         return;
     }
@@ -289,6 +313,7 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
 
     if (parsed_json) json_object_put(parsed_json);
     g_free(normalized_search);
+    g_free(search_term_copy);
     free(chunk.memory);
 }
 
