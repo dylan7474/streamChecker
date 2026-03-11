@@ -163,15 +163,16 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
     char url[1024];
     if (search_type == 0) {
         // By Name
-        snprintf(url, sizeof(url), "https://de1.api.radio-browser.info/json/stations/byname/%s?limit=50", encoded_term);
+        snprintf(url, sizeof(url), "https://all.api.radio-browser.info/json/stations/byname/%s?limit=50", encoded_term);
     } else {
         // By Category / Tag
-        snprintf(url, sizeof(url), "https://de1.api.radio-browser.info/json/stations/bytag/%s?limit=50", encoded_term);
+        snprintf(url, sizeof(url), "https://all.api.radio-browser.info/json/stations/bytag/%s?limit=50", encoded_term);
     }
     
     curl_free(encoded_term);
 
     curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "LinuxCRadioApp/1.0");
@@ -181,6 +182,7 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
+        fprintf(stderr, "curl search error: %s\n", curl_easy_strerror(res));
         gtk_label_set_text(GTK_LABEL(app->status_label), "Search failed! Network error.");
         free(chunk.memory);
         return;
