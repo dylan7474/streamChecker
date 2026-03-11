@@ -260,6 +260,18 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L); // 10 sec timeout
 
     CURLcode res = curl_easy_perform(curl);
+
+    if (res == CURLE_SSL_CONNECT_ERROR || res == CURLE_RECV_ERROR || res == CURLE_COULDNT_CONNECT) {
+        /*
+         * Keep HTTPS, but retry once without proxy settings.
+         * This restores the previously-working direct-connect behavior in
+         * environments where CONNECT tunneling is misconfigured.
+         */
+        curl_easy_setopt(curl, CURLOPT_PROXY, "");
+        curl_easy_setopt(curl, CURLOPT_NOPROXY, "*");
+        res = curl_easy_perform(curl);
+    }
+
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
