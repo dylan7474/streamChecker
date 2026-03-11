@@ -122,9 +122,15 @@ static gboolean category_matches_search(struct json_object *station, const char 
         return FALSE;
     }
 
-    char **tag_list = g_strsplit(tags, ",", -1);
+    char *normalized_tags = g_strdup(tags);
+    for (char *p = normalized_tags; *p != '\0'; p++) {
+        if (*p == ';' || *p == '|') {
+            *p = ',';
+        }
+    }
+
+    char **tag_list = g_strsplit(normalized_tags, ",", -1);
     gboolean match = FALSE;
-    gboolean primary_match = FALSE;
 
     for (int i = 0; tag_list[i] != NULL; i++) {
         char *trimmed = g_strstrip(tag_list[i]);
@@ -132,27 +138,15 @@ static gboolean category_matches_search(struct json_object *station, const char 
             continue;
         }
 
-        if (!primary_match) {
-            primary_match = (g_ascii_strcasecmp(trimmed, search_term) == 0);
-        }
-
         if (g_ascii_strcasecmp(trimmed, search_term) == 0) {
             match = TRUE;
+            break;
         }
     }
 
     g_strfreev(tag_list);
-
-    if (!match) {
-        return FALSE;
-    }
-
-    /*
-     * Radio Browser tags are community-maintained and many stations include a
-     * long generic tag list. Requiring a primary-tag match keeps category
-     * search results focused on the requested category (e.g. "news").
-     */
-    return primary_match;
+    g_free(normalized_tags);
+    return match;
 }
 
 // -----------------------------------------------------------------------------
@@ -246,8 +240,8 @@ static void on_search_clicked(GtkWidget *widget, gpointer data) {
         // By Name
         snprintf(url, sizeof(url), "https://all.api.radio-browser.info/json/stations/byname/%s?limit=50&hidebroken=true", encoded_term);
     } else {
-        // By Category / Tag
-        snprintf(url, sizeof(url), "https://all.api.radio-browser.info/json/stations/bytagexact/%s?limit=50&hidebroken=true", encoded_term);
+        // By Category / Tag (exact match against station tags)
+        snprintf(url, sizeof(url), "https://all.api.radio-browser.info/json/stations/search?tag=%s&tagExact=true&limit=50&hidebroken=true", encoded_term);
     }
     
     curl_free(encoded_term);
